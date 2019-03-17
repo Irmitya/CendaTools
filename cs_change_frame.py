@@ -17,181 +17,190 @@
 #
 # ***** END GPL LICENCE BLOCK *****
 
-
-bl_info = {
-	"name": "Change Frame",
-	"author": "Cenek Strichel",
-	"version": (1, 0, 4),
-	"blender": (2, 79, 0),
-	"location": "Add 'view3d.change_frame_drag' to Input Preferences under 3D View (Global)",
-	"description": "Change frame by dragging",
-	"category": "Cenda Tools",
-	"wiki_url": "https://github.com/CenekStrichel/CendaTools/wiki",
-	"tracker_url": "https://github.com/CenekStrichel/CendaTools/issues"
-	}
-
-
-import bpy
-from bpy.props import IntProperty, FloatProperty, BoolProperty, EnumProperty
 from bpy.types import AddonPreferences, Operator
+from bpy.props import FloatProperty, BoolProperty
+import bpy
+bl_info = {
+    "name": "Change Frame",
+    "author": "Cenek Strichel",
+    "version": (1, 0, 5),
+    "blender": (2, 80, 0),
+    "location": "Add 'view3d.change_frame_drag' to Input Preferences under 3D View (Global)",
+    "description": "Change frame by dragging",
+    "category": "Cenda Tools",
+    "wiki_url": "https://github.com/CenekStrichel/CendaTools/wiki",
+    "tracker_url": "https://github.com/CenekStrichel/CendaTools/issues"
+}
 
-class ChangeFrame(bpy.types.Operator):
-	
-	
-	"""Change frame with dragging"""
-	bl_idname = "view3d.change_frame_drag"
-	bl_label = "Change Frame Drag"
-	bl_options = {"UNDO_GROUPED", "INTERNAL"}
+is28 = bool(bpy.app.version >= (2, 80, 0))
+is27 = bool(bpy.app.version < (2, 80, 0))
 
-	autoSensitivity = BoolProperty( name = "Auto Sensitivity" )
-	defaultSensitivity = FloatProperty( name = "Sensitivity", default = 5 )
-	renderOnly = BoolProperty( name = "Render Only", default = True )
-	
-	
-	mouseEnum = [
-	("LeftMouse", "Left Mouse", "", "", 0),
-    ("MiddleMouse", "Middle Mouse", "", "", 1),
-    ("RightMouse", "Right Mouse", "", "", 2)
-    ]
-	
-	mouseSetting = EnumProperty( name = "End Drag", description = "", items=mouseEnum, default = "RightMouse" )
-
-
-	global frameOffset
-	global mouseOffset
-	global sensitivity
-	global previousManipulator
-	global previousOnlyRender
+if (is27):
+    context_prefs = '''bpy.context.user_preferences.addons[%r].preferences''' % __name__
+if (is28):
+    context_prefs = '''bpy.context.preferences.addons[%r].preferences''' % __name__
 
 
-	def modal(self, context, event):
-	
-		user_preferences = context.user_preferences
-		addon_prefs = user_preferences.addons[__name__].preferences
-	
-		# set mouse up button
-		mouseEnd = ''
-		if(self.mouseSetting == 'LeftMouse'):
-			mouseEnd = 'LEFTMOUSE'
-			
-		elif(self.mouseSetting == 'RightMouse'):
-			mouseEnd = 'RIGHTMOUSE'
-			
-		elif(self.mouseSetting == 'MiddleMouse'):
-			mouseEnd = 'MIDDLEMOUSE'
-			
-			
-		# change frame
-		if event.type == 'MOUSEMOVE':
-			
-			delta = self.mouseOffset - event.mouse_x
-			
-			if( addon_prefs.boolSmoothDrag ):
-				off = (-delta * self.sensitivity) + self.frameOffset
-				bpy.context.scene.frame_current = int(off)
-				bpy.context.scene.frame_subframe = off-int(off)
-				
-			else:
-				bpy.context.scene.frame_current = (-delta * self.sensitivity) + self.frameOffset
-				
-		# end of modal
-		elif event.type == mouseEnd and event.value == 'RELEASE':
-			
-			# previous viewport setting
-			bpy.context.space_data.show_manipulator = self.previousManipulator
-			
-			if(self.renderOnly):
-				bpy.context.space_data.show_only_render = self.previousOnlyRender
+class CENDA_OT_ChangeFrame(Operator):
 
-			# cursor back
-			bpy.context.window.cursor_set("DEFAULT")
-			
-			# snap back
-			if( addon_prefs.boolSmoothSnap ):
-				bpy.context.scene.frame_subframe = 0
-			
-			return {'FINISHED'}
-			
-		return {'RUNNING_MODAL'}
+    """Change frame with dragging"""
+    bl_idname = "view3d.change_frame_drag"
+    bl_label = "Change Frame Drag"
+    bl_options = {'UNDO_GROUPED', 'INTERNAL', 'GRAB_CURSOR', 'BLOCKING'}
 
+    if (is27):
+        autoSensitivity = BoolProperty(name="Auto Sensitivity")
+        defaultSensitivity = FloatProperty(name="Sensitivity", default=5)
+        renderOnly = BoolProperty(name="Render Only", default=True)
+    if (is28):
+        autoSensitivity: BoolProperty(name="Auto Sensitivity")
+        defaultSensitivity: FloatProperty(name="Sensitivity", default=5)
+        renderOnly: BoolProperty(name="Render Only", default=True)
 
-	def invoke(self, context, event):
-		
-		user_preferences = context.user_preferences
-		addon_prefs = user_preferences.addons[__name__].preferences
-		
-		# hide viewport helpers
-		self.previousManipulator = bpy.context.space_data.show_manipulator
-		bpy.context.space_data.show_manipulator = False
-		
-		if(self.renderOnly):
-			self.previousOnlyRender = bpy.context.space_data.show_only_render
-			bpy.context.space_data.show_only_render = True
-		
-		
-		# start modal
-		if( addon_prefs.boolSmoothDrag ):
-			self.frameOffset = bpy.context.scene.frame_current_final
-		else:
-			self.frameOffset = bpy.context.scene.frame_current 
-			
-		self.mouseOffset = event.mouse_x
-		
-		# cursor
-		bpy.context.window.cursor_set("SCROLL_X")
-		
-		context.window_manager.modal_handler_add(self)
-		
-		found = False
-		
-		# auto sensitivity
-		if(self.autoSensitivity):
-			if context.area.type == 'VIEW_3D':
-				
-				ratio = 1024 / context.area.width
-				self.sensitivity = (ratio / 10)
-				
-				# finding end of frame range
-				if(bpy.context.scene.use_preview_range):
-					endFrame = bpy.context.scene.frame_preview_end
-				else:
-					endFrame = bpy.context.scene.frame_end
+    global frameOffset
+    global mouseOffset
+    global sensitivity
+    global previousManipulator
+    global previousOnlyRender
+    global StartButton
 
-				self.sensitivity *= (endFrame/ 100)
+    def modal(self, context, event):
 
-				found = True
+        addon_prefs = eval(context_prefs)
+        scene = context.scene
+        space_data = context.space_data
 
-		# default
-		if(not found):
-			self.sensitivity = self.defaultSensitivity / 100
-			
-		return {'RUNNING_MODAL'}
+        # change frame
+        if (event.type == 'MOUSEMOVE'):
+
+            delta = self.mouseOffset - event.mouse_x
+
+            if (addon_prefs.boolSmoothDrag):
+                off = (-delta * self.sensitivity) + self.frameOffset
+                current = int(off)
+                subframe = off - int(off)
+                if (current < 0 and subframe) or subframe < 0:
+                    # Negative numbers have to offset a little for frame_set
+                    current -= 1
+                    subframe = 1 - abs(subframe)
+                scene.frame_current = current
+                scene.frame_subframe = subframe
+
+            else:
+                scene.frame_current = (-delta * self.sensitivity) + self.frameOffset
+
+        # end of modal
+        elif (event.type == self.startButton and event.value == 'RELEASE'):
+
+            # previous viewport setting
+            if (context.area.type == 'VIEW_3D'):
+                if is27:
+                    space_data.show_manipulator = self.previousManipulator
+
+                    if (self.renderOnly):
+                        space_data.show_only_render = self.previousOnlyRender
+                if is28:
+                    space_data.show_gizmo = self.previousManipulator
+
+                    if (self.renderOnly):
+                        space_data.overlay.show_overlays = self.previousOnlyRender
+
+            # cursor back
+            context.window.cursor_set("DEFAULT")
+
+            # snap back
+            if (addon_prefs.boolSmoothSnap):
+                scene.frame_subframe = 0
+
+            return {'FINISHED'}
+
+        return {'RUNNING_MODAL'}
+
+    def invoke(self, context, event):
+        addon_prefs = eval(context_prefs)
+        scene = context.scene
+        space_data = context.space_data
+
+        # hide viewport helpers
+        if (context.area.type == 'VIEW_3D'):
+            if (is27):
+                self.previousManipulator = space_data.show_manipulator
+                space_data.show_manipulator = False
+            if (is28):
+                self.previousManipulator = space_data.show_gizmo
+                space_data.show_gizmo = False
+
+            if (self.renderOnly):
+                if is27:
+                    self.previousOnlyRender = space_data.show_only_render
+                    space_data.show_only_render = True
+                if is28:
+                    self.previousOnlyRender = space_data.overlay.show_overlays
+                    space_data.overlay.show_overlays = False
+
+        # start modal
+        if (addon_prefs.boolSmoothDrag):
+            self.frameOffset = scene.frame_current_final
+        else:
+            self.frameOffset = scene.frame_current
+
+        self.mouseOffset = event.mouse_x
+        self.startButton = event.type
+
+        # cursor
+        context.window.cursor_set("SCROLL_X")
+
+        context.window_manager.modal_handler_add(self)
+
+        found = False
+
+        # auto sensitivity
+        if (self.autoSensitivity):
+
+            ratio = (1024 / context.area.width)
+            self.sensitivity = (ratio / 10)
+
+            # finding end of frame range
+            if (scene.use_preview_range):
+                endFrame = scene.frame_preview_end
+            else:
+                endFrame = scene.frame_end
+
+            self.sensitivity *= (endFrame / 100)
+
+            found = True
+
+        # default
+        if (not found):
+            self.sensitivity = self.defaultSensitivity / 100
+
+        return {'RUNNING_MODAL'}
 
 
 class ChangeFrameDragAddonPreferences(AddonPreferences):
 
-	bl_idname = __name__
+    bl_idname = __name__
 
-	boolSmoothDrag = BoolProperty( name="Smooth Drag",default=True )
-	boolSmoothSnap = BoolProperty( name="Snap after drag",default=True )
-	
-	def draw(self, context):
-	
-		layout = self.layout
-		
-		layout.prop(self, "boolSmoothDrag")
-		
-		if(self.boolSmoothDrag):
-			layout.prop(self, "boolSmoothSnap")
+    if (is27):
+        boolSmoothDrag = BoolProperty(name="Smooth Drag", default=True)
+        boolSmoothSnap = BoolProperty(name="Snap after drag", default=True)
+    if (is28):
+        boolSmoothDrag: BoolProperty(name="Smooth Drag", default=True)
+        boolSmoothSnap: BoolProperty(name="Snap after drag", default=True)
 
-		
-		
-###########################################################
-def register():
-	bpy.utils.register_module(__name__)
+    def draw(self, context):
+        layout = self.layout
 
-def unregister():
-	bpy.utils.unregister_module(__name__)
+        layout.prop(self, 'boolSmoothDrag')
 
-if __name__ == "__main__":
-	register()
+        if (self.boolSmoothDrag):
+            layout.prop(self, 'boolSmoothSnap')
+
+
+classes = (
+    CENDA_OT_ChangeFrame,
+    ChangeFrameDragAddonPreferences,
+    )
+
+
+register, unregister = bpy.utils.register_classes_factory(classes)
