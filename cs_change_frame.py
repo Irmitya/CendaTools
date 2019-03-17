@@ -37,8 +37,45 @@ is27 = bool(bpy.app.version < (2, 80, 0))
 
 if (is27):
     context_prefs = '''bpy.context.user_preferences.addons[%r].preferences''' % __name__
+    sym = ' = '
 if (is28):
     context_prefs = '''bpy.context.preferences.addons[%r].preferences''' % __name__
+    sym = ': '
+
+# ==========================================================
+bprops = [
+    'BoolProperty',
+    'BoolVectorProperty',
+    'IntProperty',
+    'IntVectorProperty',
+    'FloatProperty',
+    'FloatVectorProperty',
+    'StringProperty',
+    'EnumProperty',
+    'PointerProperty',
+    'CollectionProperty',
+    'RemoveProperty',
+    ]
+bprops = [eval('bpy.props.%s' % b) for b in bprops]
+
+
+def register_props(cls):
+    txt = ''
+
+    if type(cls) is type:
+        # blank class
+        name = cls.__name__
+        for var in cls.__dict__:
+            prop = cls.__dict__[var]
+            if not prop or type(prop) is not tuple:
+                continue
+
+            # if prop[0] in bpy.props.__dict__.items():
+                #   # This version includes the Properties plus hidden props, that you'd never run into anyway; either one works
+            if prop[0] in bprops:
+                txt += "%s%s%s.%s; " % (var, sym, name, var)
+    return txt
+# ==========================================================
 
 
 class CENDA_OT_ChangeFrame(Operator):
@@ -48,14 +85,11 @@ class CENDA_OT_ChangeFrame(Operator):
     bl_label = "Change Frame Drag"
     bl_options = {'UNDO_GROUPED', 'INTERNAL', 'GRAB_CURSOR', 'BLOCKING'}
 
-    if (is27):
+    class props:
         autoSensitivity = BoolProperty(name="Auto Sensitivity")
         defaultSensitivity = FloatProperty(name="Sensitivity", default=5)
         renderOnly = BoolProperty(name="Render Only", default=True)
-    if (is28):
-        autoSensitivity: BoolProperty(name="Auto Sensitivity")
-        defaultSensitivity: FloatProperty(name="Sensitivity", default=5)
-        renderOnly: BoolProperty(name="Render Only", default=True)
+    exec(register_props(props))
 
     global frameOffset
     global mouseOffset
@@ -181,12 +215,10 @@ class ChangeFrameDragAddonPreferences(AddonPreferences):
 
     bl_idname = __name__
 
-    if (is27):
+    class props:
         boolSmoothDrag = BoolProperty(name="Smooth Drag", default=True)
         boolSmoothSnap = BoolProperty(name="Snap after drag", default=True)
-    if (is28):
-        boolSmoothDrag: BoolProperty(name="Smooth Drag", default=True)
-        boolSmoothSnap: BoolProperty(name="Snap after drag", default=True)
+    exec(register_props(props))
 
     def draw(self, context):
         layout = self.layout
